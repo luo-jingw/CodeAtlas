@@ -143,6 +143,16 @@ codeatlas/
   render/compact.py   # Output formatting
 ```
 
+## Performance
+
+- **Parallel parsing**: Files are parsed concurrently using ThreadPoolExecutor
+- **Batch commits**: All database writes are batched in a single transaction
+- **Query caching**: Symbol lookups are cached between indexing phases
+
+Typical performance on a medium-sized project (~200 files):
+- `init`: < 1s
+- `rebuild [path]`: < 0.2s
+
 ## Database
 
 SQLite single-file: `.codeatlas.db`

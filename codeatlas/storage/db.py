@@ -82,6 +82,7 @@ class Database:
     def __init__(self, db_path: Path) -> None:
         self.db_path = db_path
         self.conn: Optional[sqlite3.Connection] = None
+        self._in_transaction = False
 
     def connect(self) -> None:
         self.conn = sqlite3.connect(self.db_path)
@@ -89,8 +90,34 @@ class Database:
 
     def close(self) -> None:
         if self.conn:
+            if self._in_transaction:
+                self.commit()
             self.conn.close()
             self.conn = None
+
+    def begin_transaction(self) -> None:
+        """Begin a transaction for batch operations."""
+        if not self.conn:
+            raise RuntimeError("Database not connected")
+        if not self._in_transaction:
+            self.conn.execute("BEGIN")
+            self._in_transaction = True
+
+    def commit(self) -> None:
+        """Commit the current transaction."""
+        if not self.conn:
+            raise RuntimeError("Database not connected")
+        if self._in_transaction:
+            self.conn.commit()
+            self._in_transaction = False
+
+    def rollback(self) -> None:
+        """Rollback the current transaction."""
+        if not self.conn:
+            raise RuntimeError("Database not connected")
+        if self._in_transaction:
+            self.conn.rollback()
+            self._in_transaction = False
 
     def init_schema(self) -> None:
         if not self.conn:
@@ -215,7 +242,6 @@ class Database:
                 record.last_indexed_at,
             ),
         )
-        self.conn.commit()
         return cursor.lastrowid  # type: ignore
 
     def get_file_by_path(self, path: str) -> Optional[FileRecord]:
@@ -261,7 +287,6 @@ class Database:
                 record.id,
             ),
         )
-        self.conn.commit()
 
     def insert_symbol(self, record: SymbolRecord) -> int:
         if not self.conn:
@@ -297,7 +322,6 @@ class Database:
                 record.updated_at,
             ),
         )
-        self.conn.commit()
         return cursor.lastrowid  # type: ignore
 
     def get_symbol_by_signature_hash(self, signature_hash: str) -> Optional[SymbolRecord]:
@@ -354,14 +378,12 @@ class Database:
             "UPDATE symbols SET trust_level = ?, trust_source = ? WHERE id = ?",
             (trust_level, trust_source, symbol_id),
         )
-        self.conn.commit()
 
     def delete_symbols_by_file_id(self, file_id: int) -> None:
         if not self.conn:
             raise RuntimeError("Database not connected")
 
         self.conn.execute("DELETE FROM symbols WHERE file_id = ?", (file_id,))
-        self.conn.commit()
 
     def insert_edge(self, record: EdgeRecord) -> int:
         if not self.conn:
@@ -371,7 +393,6 @@ class Database:
             "INSERT OR IGNORE INTO edges (src_symbol_id, dst_symbol_id, edge_kind) VALUES (?, ?, ?)",
             (record.src_symbol_id, record.dst_symbol_id, record.edge_kind),
         )
-        self.conn.commit()
         return cursor.lastrowid or 0
 
     def get_edges_from_symbol(self, symbol_id: int) -> list[EdgeRecord]:
@@ -416,7 +437,6 @@ class Database:
             "DELETE FROM edges WHERE src_symbol_id = ? OR dst_symbol_id = ?",
             (symbol_id, symbol_id),
         )
-        self.conn.commit()
 
     def insert_file_edge(self, record: FileEdgeRecord) -> int:
         if not self.conn:
@@ -426,7 +446,6 @@ class Database:
             "INSERT OR IGNORE INTO file_edges (src_file_id, dst_file_id, edge_kind) VALUES (?, ?, ?)",
             (record.src_file_id, record.dst_file_id, record.edge_kind),
         )
-        self.conn.commit()
         return cursor.lastrowid  # type: ignore
 
     def get_file_edges_from_file(self, file_id: int) -> list[FileEdgeRecord]:
@@ -454,7 +473,6 @@ class Database:
             "DELETE FROM file_edges WHERE src_file_id = ? OR dst_file_id = ?",
             (file_id, file_id),
         )
-        self.conn.commit()
 
     def insert_trust_log(self, record: TrustLogRecord) -> int:
         if not self.conn:
@@ -473,7 +491,6 @@ class Database:
                 record.trust_source,
             ),
         )
-        self.conn.commit()
         return cursor.lastrowid  # type: ignore
 
     def get_all_files(self) -> list[FileRecord]:
@@ -611,7 +628,6 @@ class Database:
             """,
             (record.name, record.qualified_name, record.parent_namespace_id),
         )
-        self.conn.commit()
         return cursor.lastrowid  # type: ignore
 
     def get_namespace_by_qualified_name(
@@ -641,7 +657,6 @@ class Database:
             "INSERT OR IGNORE INTO namespace_members (namespace_id, symbol_id) VALUES (?, ?)",
             (namespace_id, symbol_id),
         )
-        self.conn.commit()
 
     def get_namespace_members(self, namespace_id: int) -> list[SymbolRecord]:
         if not self.conn:
@@ -664,7 +679,6 @@ class Database:
 
         self.conn.execute("DELETE FROM namespace_members")
         self.conn.execute("DELETE FROM namespaces")
-        self.conn.commit()
 
     def delete_namespace_members_by_symbol_id(self, symbol_id: int) -> None:
         """Delete namespace_members entries for a symbol."""
@@ -674,4 +688,3 @@ class Database:
         self.conn.execute(
             "DELETE FROM namespace_members WHERE symbol_id = ?", (symbol_id,)
         )
-        self.conn.commit()

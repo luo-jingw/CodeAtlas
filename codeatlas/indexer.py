@@ -1,5 +1,6 @@
 """Indexer for CodeAtlas - coordinates parsing and storage."""
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -99,24 +100,49 @@ class Indexer:
             affected_paths = {str(f) for f in files_to_index}
             self._save_trust_cache(affected_paths)
 
-        # Phase 1: Parse files (don't store symbols yet)
-        parse_results: list[tuple[int, ParseResult]] = []
-        for file_path in files_to_index:
-            result = self._parse_file(file_path)
-            if result:
-                file_id, parse_result, file_errors = result
+        # Phase 1: Parse files in parallel (no DB operations)
+        parsed_files: list[tuple[Path, str, str, ParseResult]] = []
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = {
+                executor.submit(self._parse_file_content, file_path): file_path
+                for file_path in files_to_index
+            }
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
+                    parsed_files.append(result)
+
+        # Begin transaction for batch operations
+        self.db.begin_transaction()
+
+        try:
+            # Phase 1b: Store parsed files to database (sequential)
+            parse_results: list[tuple[int, ParseResult]] = []
+            for file_path, language, content_hash, parse_result in parsed_files:
+                file_id, parse_result, file_errors = self._store_parsed_file(
+                    file_path, language, content_hash, parse_result
+                )
                 files_indexed += 1
                 errors.extend(file_errors)
                 parse_results.append((file_id, parse_result))
 
-        # Phase 2: Merge and store symbols (handles decl/def merging for C++)
-        symbols_indexed = self._store_merged_symbols(parse_results)
+            # Phase 2: Merge and store symbols (handles decl/def merging for C++)
+            symbols_indexed = self._store_merged_symbols(parse_results)
 
-        # Phase 3: Store edges using global symbol table
-        self._store_all_edges(parse_results)
+            # Cache symbols once for phases 3 and 4
+            all_symbols = self.db.get_all_symbols()
 
-        # Phase 4: Build namespace_members for C++ namespaces
-        self._build_namespace_members()
+            # Phase 3: Store edges using cached symbol table
+            self._store_all_edges(parse_results, all_symbols)
+
+            # Phase 4: Build namespace_members for C++ namespaces
+            self._build_namespace_members(all_symbols)
+
+            # Commit all changes
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
 
         return files_indexed, symbols_indexed, errors
 
@@ -155,10 +181,13 @@ class Indexer:
 
         return sorted(files)
 
-    def _parse_file(
+    def _parse_file_content(
         self, file_path: Path
-    ) -> Optional[tuple[int, ParseResult, list[str]]]:
-        """Parse file and prepare for storage (symbols stored in merge phase)."""
+    ) -> Optional[tuple[Path, str, str, ParseResult]]:
+        """Parse file content (thread-safe, no DB operations).
+
+        Returns: (file_path, language, content_hash, parse_result) or None
+        """
         parser = self._get_parser(file_path)
         if not parser:
             return None
@@ -169,15 +198,20 @@ class Indexer:
             return None
 
         content_hash = xxhash.xxh64(source.encode()).hexdigest()
+        rel_path = file_path.relative_to(self.config.workspace)
+        parse_result = parser.parse(rel_path, source)
 
+        return (file_path, parser.language, content_hash, parse_result)
+
+    def _store_parsed_file(
+        self, file_path: Path, language: str, content_hash: str, parse_result: ParseResult
+    ) -> tuple[int, ParseResult, list[str]]:
+        """Store parsed file to database (not thread-safe)."""
         existing_file = self.db.get_file_by_path(str(file_path))
         if existing_file:
             self._clear_file_data(existing_file.id)  # type: ignore
 
-        rel_path = file_path.relative_to(self.config.workspace)
-        parse_result = parser.parse(rel_path, source)
-
-        file_id = self._store_file(file_path, parser.language, content_hash)
+        file_id = self._store_file(file_path, language, content_hash)
 
         return (file_id, parse_result, parse_result.errors)
 
@@ -365,11 +399,10 @@ class Indexer:
         return self.db.insert_symbol(record)
 
     def _store_all_edges(
-        self, parse_results: list[tuple[int, ParseResult]]
+        self, parse_results: list[tuple[int, ParseResult]], all_symbols: list[SymbolRecord]
     ) -> None:
-        """Phase 2: Store all edges using global symbol table."""
+        """Phase 3: Store all edges using global symbol table."""
         # Build global symbol lookup tables
-        all_symbols = self.db.get_all_symbols()
         name_to_ids: dict[str, list[int]] = {}
         qualified_to_id: dict[str, int] = {}
 
@@ -604,12 +637,10 @@ class Indexer:
 
         return None
 
-    def _build_namespace_members(self) -> None:
+    def _build_namespace_members(self, all_symbols: list[SymbolRecord]) -> None:
         """Build namespace_members table for C++ namespaces."""
         # Clear existing namespace data
         self.db.clear_namespaces()
-
-        all_symbols = self.db.get_all_symbols()
 
         # Find and store namespace symbols
         namespace_qualified_to_id: dict[str, int] = {}
