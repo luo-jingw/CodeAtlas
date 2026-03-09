@@ -20,3 +20,7 @@ build/
 # Nuitka build artifacts
 *.build/
 *.onefile-build/
+
+# Internal notes (not for public)
+implementation_notes.txt
+项目结构规范.txt
