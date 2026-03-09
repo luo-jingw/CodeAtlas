@@ -1,0 +1,120 @@
+# CodeAtlas Implementation Notes
+
+## 实现状态总结
+
+### 第一阶段：parser + storage (Python)
+- storage/db.py - SQLite 数据库操作
+- parser/base.py - 解析器抽象接口
+- parser/python.py - Python 语言映射与 signature_hash
+- config.py - .codeatlas.yaml 加载与默认规则
+- cli.py - 入口与命令定义
+- indexer.py - 协调解析与存储
+
+### 第二阶段：查询与渲染
+- query/overview.py - Level 0 模块依赖图 (file + logic 视图)
+- query/inspect.py - Level 1/2 符号展开
+- query/search.py - 符号检索
+- query/read.py - 源码读取
+- render/compact.py - 紧凑文本渲染
+
+### 第三阶段：补全命令
+- query/trace.py - 连接关系邻域查询 (depth=1)
+- trust/manager.py - 信任域管理与日志
+- rebuild 命令 (支持单文件/目录 + 信任继承)
+
+### 第四阶段：C/C++ 支持
+- parser/cpp.py - C/C++ 语言映射
+- 符号提取: namespace, class, struct, function, method, enum, alias, variable
+- qualified_name 构建 (:: 分隔)
+- signature_hash 生成 (parameter_type_list)
+- 声明/定义分离与合并 (signature_hash 匹配)
+- 可见性解析 (public/private/protected)
+- namespace_members 表关联
+- 连接关系: call, use_type, inherit, instantiate, reference
+- #include 解析与 file_edges
+- 前向声明处理 (跳过不创建重复符号)
+- declaration_only/definition_only 状态标记
+
+### 第五阶段：打包
+- Nuitka 编译配置完成
+
+## 设计对照
+
+### 未实现功能 (可选/低优先级)
+
+| 功能 | 说明 |
+|------|------|
+| storage/path_tree.py | 路径直接存储在 files 表，无需路径树 |
+| 可达性分析 | entry 配置和 unreachable 命令 (设计标注为可选) |
+
+### 已实现功能验证
+
+| 功能 | 实现位置 |
+|------|----------|
+| rebuild [path] | indexer.index_workspace(target_path) |
+| rebuild 信任继承 | _save_trust_cache + _get_inherited_trust |
+| trust_source: inherited | 继承时自动设置 |
+| edge_kind: reference | parser/python.py, parser/cpp.py |
+| C++ 前向声明 | _extract_class 跳过无 body 节点 |
+| declaration_only/definition_only | SymbolRecord.symbol_status |
+| overview --view logic | _logic_view_overview |
+| trust_log 表 | db.py + trust/manager.py |
+| edges 去重 | UNIQUE INDEX + INSERT OR IGNORE |
+
+## 关键实现细节
+
+**indexer.py**
+- 四阶段索引: 解析 -> 合并符号 -> 存储边 -> namespace_members
+- _save_trust_cache / _get_inherited_trust: rebuild 时通过 signature_hash 继承信任
+- index_workspace(target_path): 支持单文件/目录增量 rebuild
+- symbol_status: C++ 符号标记 declaration_only / definition_only
+
+**parser/python.py**
+- _extract_references: 提取 UPPER_CASE 常量和 CamelCase 类引用
+- _is_python_builtin: 过滤 Python 内置名称
+
+**parser/cpp.py**
+- _extract_references: 提取全局变量、枚举值、qualified 标识符
+- _extract_class: 跳过前向声明 (无 body 的 class/struct)
+- _is_cpp_keyword: 过滤 C++ 关键字
+
+**storage/db.py**
+- SymbolRecord.symbol_status 字段
+- UNIQUE INDEX 防止 edges/file_edges 重复
+- INSERT OR IGNORE 语义
+
+## C/C++ 设计边界
+
+不实现:
+- 模板实例展开
+- 宏展开
+- 类型推断
+- 精准 call graph
+
+目标: 可用但保守的索引，不承诺完整语义一致性
+
+## 测试验证
+
+```
+codeatlas init
+-> Indexed 24 files, 210 symbols
+
+codeatlas rebuild codeatlas/parser
+-> Rebuilt 4 files, 72 symbols
+
+codeatlas trust "codeatlas.cli.init" high
+codeatlas rebuild
+codeatlas search init --exact
+-> #3 [codeatlas/cli.py:33-75] codeatlas.cli.init  [high]  (信任继承成功)
+
+edge_kinds: {use_type, reference, inherit, call}
+reference edges: 3
+```
+
+## Nuitka 编译命令
+
+```bash
+python -m nuitka --standalone --onefile --static-libpython=no \
+  --include-package=codeatlas --output-dir=dist \
+  codeatlas/__main__.py -o codeatlas
+```
