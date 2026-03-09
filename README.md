@@ -7,11 +7,11 @@ LLM-oriented code atlas for understanding code structure with minimal tokens.
 
 ## When to Use
 
-- LLM 需要快速理解陌生代码库结构
-- 定位符号定义、查看依赖关系
-- 生成代码前了解现有接口和模块边界
+- LLM needs to quickly understand unfamiliar codebase structure
+- Locate symbol definitions and view dependency relationships
+- Understand existing interfaces and module boundaries before generating code
 
-**Core principle**: 辅助工具，不参与构建/版本控制/测试。索引可随时从源码重建。
+**Core principle**: Auxiliary tool, not infrastructure. Does not participate in build, version control, or testing. Index can be rebuilt from source at any time.
 
 ## Installation
 
@@ -28,22 +28,22 @@ pip install -e .
 ## Quick Start
 
 ```bash
-# 1. 初始化索引
+# 1. Initialize index
 codeatlas init
 
-# 2. 查看模块依赖（C++ 扁平目录建议用 logic 视图）
+# 2. View module dependencies (use logic view for flat C++ directories)
 codeatlas overview
 codeatlas overview --view logic
 
-# 3. 搜索符号
+# 3. Search for symbols
 codeatlas search Manager
 # Output: #42 [src/manager.py:15-89] Manager  [low]
 
-# 4. 查看符号详情和连接关系
+# 4. View symbol details and connections
 codeatlas inspect "#42" --level 2
 codeatlas trace "#42"
 
-# 5. 读取源码
+# 5. Read source code
 codeatlas read "#42"
 ```
 
@@ -51,14 +51,14 @@ codeatlas read "#42"
 
 | Command | Purpose | Key Options |
 |---------|---------|-------------|
-| `init` | 初始化索引 | `--workspace PATH` |
-| `overview` | 模块依赖图 | `--view file\|logic`, `--filter PATH` |
-| `inspect` | 符号详情 | `--level 1\|2`, `--detail method` |
-| `search` | 符号搜索 | `--exact`, `--kind`, `--path` |
-| `read` | 读取源码 | `--part declaration\|definition` |
-| `trace` | 连接关系 | `--direction forward\|backward\|both` |
-| `trust` | 设置信任等级 | `high\|low` |
-| `rebuild` | 重建索引 | `[path]` 支持单文件/目录 |
+| `init` | Initialize index | `--workspace PATH` |
+| `overview` | Module dependency graph | `--view file\|logic`, `--filter PATH` |
+| `inspect` | Symbol details | `--level 1\|2`, `--detail method` |
+| `search` | Symbol search | `--exact`, `--kind`, `--path` |
+| `read` | Read source code | `--part declaration\|definition` |
+| `trace` | Connection tracing | `--direction forward\|backward\|both` |
+| `trust` | Set trust level | `high\|low` |
+| `rebuild` | Rebuild index | `[path]` supports single file/directory |
 
 ### Output Examples
 
@@ -94,10 +94,10 @@ Backward (called by):
 
 ### Tips for C++ Projects
 
-- **扁平目录结构**：使用 `--view logic` 基于 namespace/class 聚合
-- **Include 记录**：仅 `#include "..."` 记录 file_edges，`#include <...>` 不记录
-- **声明/定义合并**：.h 声明与 .cpp 定义通过 signature_hash 自动合并
-- **前向声明**：`class Foo;` 不创建符号，避免重复
+- **Flat directory structure**: Use `--view logic` to aggregate by namespace/class
+- **Include tracking**: Only `#include "..."` creates file_edges, `#include <...>` is ignored
+- **Declaration/definition merging**: .h declarations and .cpp definitions are automatically merged via signature_hash
+- **Forward declarations**: `class Foo;` does not create symbols to avoid duplicates
 
 ## Configuration
 
@@ -119,15 +119,15 @@ exclude:
 
 ## Design Compatibility
 
-为最大化 CodeAtlas 效果，建议代码遵循：
+To maximize CodeAtlas effectiveness, follow these principles:
 
-1. **显式依赖** - 无通配符导入，无动态导入
-2. **单一职责** - 一个文件做一件事
-3. **接口分离** - C++ .h/.cpp 分离，Python 用 Protocol/ABC
-4. **完整类型标注** - 函数签名写全类型
-5. **避免隐式模式** - 无 metaclass 动态生成、无 `__getattr__` 代理
+1. **Explicit dependencies** - No wildcard imports, no dynamic imports
+2. **Single responsibility** - One file does one thing
+3. **Interface separation** - C++ .h/.cpp separation, Python uses Protocol/ABC
+4. **Complete type annotations** - Full type hints on function signatures
+5. **Avoid implicit patterns** - No metaclass dynamic generation, no `__getattr__` proxying
 
-**Summary: Make everything explicit.** 详见 `codeatlas --help`
+**Summary: Make everything explicit.** See `codeatlas --help` for details.
 
 ## Architecture
 
