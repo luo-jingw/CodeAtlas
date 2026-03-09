@@ -23,6 +23,8 @@ Source Code → Tree-sitter Parsing → Symbol Graph → SQLite Index
 
 **Core principle**: Auxiliary tool, not infrastructure. Index can be rebuilt from source at any time. Does not participate in build, version control, or testing.
 
+**Best used with grep**: CodeAtlas and grep are complementary tools. Use CodeAtlas for structural queries (dependencies, symbol relationships, module boundaries) and grep for text patterns (error messages, string literals, TODOs). Together they provide both semantic understanding and raw search capability.
+
 ## Installation
 
 ```bash
