@@ -3,15 +3,25 @@
 ![Python](https://img.shields.io/badge/Python-3.10+-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-LLM-oriented code atlas for understanding code structure with minimal tokens.
+## Problem
 
-## When to Use
+LLMs working with unfamiliar codebases face a dilemma:
+- **Too little context**: Guessing leads to hallucinated APIs and broken imports
+- **Too much context**: Dumping entire files wastes tokens and dilutes focus
 
-- LLM needs to quickly understand unfamiliar codebase structure
-- Locate symbol definitions and view dependency relationships
-- Understand existing interfaces and module boundaries before generating code
+What LLMs actually need: a structured map of symbols, dependencies, and module boundaries — not raw source code.
 
-**Core principle**: Auxiliary tool, not infrastructure. Does not participate in build, version control, or testing. Index can be rebuilt from source at any time.
+## Solution
+
+CodeAtlas builds a lightweight, queryable index of your codebase:
+
+```
+Source Code → Tree-sitter Parsing → Symbol Graph → SQLite Index
+                                                        ↓
+                                    LLM ← Compact Output ← CLI Queries
+```
+
+**Core principle**: Auxiliary tool, not infrastructure. Index can be rebuilt from source at any time. Does not participate in build, version control, or testing.
 
 ## Installation
 
@@ -132,15 +142,42 @@ To maximize CodeAtlas effectiveness, follow these principles:
 ## Architecture
 
 ```
-codeatlas/
-  cli.py              # Entry point
-  config.py           # Configuration
-  indexer.py          # Parse coordination
-  parser/             # Language parsers (Python, C++)
-  storage/db.py       # SQLite operations
-  query/              # overview, inspect, search, read, trace
-  trust/manager.py    # Trust level management
-  render/compact.py   # Output formatting
+┌─────────────────────────────────────────────────────────────────┐
+│                        Source Files                             │
+│                   (.py, .pyi, .cpp, .h, ...)                    │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Tree-sitter Parsing                          │
+│         Extract symbols, signatures, relationships             │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Symbol Graph                               │
+│   symbols: class, function, method, variable                   │
+│   edges: call, inherit, use_type, reference                    │
+│   file_edges: import, include                                   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    SQLite Index (.codeatlas.db)                 │
+│        Persistent storage with signature_hash tracking         │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                       CLI Queries                               │
+│          overview | inspect | search | trace | read            │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Compact Output                             │
+│            Token-efficient format for LLM consumption          │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Performance
