@@ -1,5 +1,6 @@
 """Symbol search query for CodeAtlas."""
 
+import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -24,6 +25,7 @@ def search_symbols(
     db: Database,
     query: str,
     exact: bool = False,
+    regex: bool = False,
     kind: Optional[str] = None,
     path: Optional[str] = None,
 ) -> list[SearchResult]:
@@ -33,13 +35,19 @@ def search_symbols(
         db: Database connection
         query: Search query string
         exact: If True, match exact name; otherwise substring match
+        regex: If True, use regex pattern matching
         kind: Filter by symbol_kind (function, class, method, etc.)
         path: Filter by file path pattern
 
     Returns:
         List of matching symbols, low trust first
     """
-    symbols = db.search_symbols(query, exact=exact, kind=kind, path=path)
+    if regex:
+        symbols = db.search_symbols_all(kind=kind, path=path)
+        pattern = re.compile(query)
+        symbols = [s for s in symbols if pattern.search(s.name)]
+    else:
+        symbols = db.search_symbols(query, exact=exact, kind=kind, path=path)
 
     results: list[SearchResult] = []
     for symbol in symbols:

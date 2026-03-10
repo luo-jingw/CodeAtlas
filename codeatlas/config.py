@@ -6,6 +6,21 @@ from typing import Optional
 
 import yaml
 
+# Default supported file extensions
+SUPPORTED_EXTENSIONS: set[str] = {
+    # Python
+    ".py",
+    ".pyi",
+    # C/C++
+    ".c",
+    ".h",
+    ".cpp",
+    ".hpp",
+    # CUDA
+    ".cu",
+    ".cuh",
+}
+
 
 @dataclass
 class TrustConfig:
@@ -24,6 +39,7 @@ class Config:
     entry: Optional[str]
     trust: TrustConfig
     exclude: list[str]
+    extensions: set[str]
 
     @classmethod
     def load(cls, workspace: Path) -> "Config":
@@ -51,12 +67,20 @@ class Config:
 
         exclude = data.get("exclude", cls._default_exclude())
 
+        # Load extensions from config or use default
+        extensions_list = data.get("extensions")
+        if extensions_list is not None:
+            extensions = set(extensions_list)
+        else:
+            extensions = SUPPORTED_EXTENSIONS.copy()
+
         return cls(
             workspace=resolved_workspace.resolve(),
             language=data.get("language", "auto"),
             entry=data.get("entry"),
             trust=trust,
             exclude=exclude,
+            extensions=extensions,
         )
 
     @classmethod
@@ -67,6 +91,7 @@ class Config:
             entry=None,
             trust=TrustConfig(),
             exclude=cls._default_exclude(),
+            extensions=SUPPORTED_EXTENSIONS.copy(),
         )
 
     @staticmethod

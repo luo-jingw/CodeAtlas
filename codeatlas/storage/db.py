@@ -549,6 +549,47 @@ class Database:
         cursor = self.conn.execute(sql, params)
         return [self._row_to_symbol(row) for row in cursor.fetchall()]
 
+    def search_symbols_all(
+        self,
+        kind: Optional[str] = None,
+        path: Optional[str] = None,
+    ) -> list[SymbolRecord]:
+        """Get all symbols, optionally filtered by kind and path.
+
+        Used for regex search where filtering is done in Python.
+        """
+        if not self.conn:
+            raise RuntimeError("Database not connected")
+
+        conditions: list[str] = []
+        params: list[str] = []
+
+        if kind:
+            conditions.append("symbol_kind = ?")
+            params.append(kind)
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+        if path:
+            if conditions:
+                sql = f"""
+                    SELECT s.* FROM symbols s
+                    JOIN files f ON s.file_id = f.id
+                    {where_clause} AND f.path LIKE ?
+                """
+            else:
+                sql = """
+                    SELECT s.* FROM symbols s
+                    JOIN files f ON s.file_id = f.id
+                    WHERE f.path LIKE ?
+                """
+            params.append(f"%{path}%")
+        else:
+            sql = f"SELECT * FROM symbols {where_clause}"
+
+        cursor = self.conn.execute(sql, params)
+        return [self._row_to_symbol(row) for row in cursor.fetchall()]
+
     def get_symbol_by_id(self, symbol_id: int) -> Optional[SymbolRecord]:
         if not self.conn:
             raise RuntimeError("Database not connected")

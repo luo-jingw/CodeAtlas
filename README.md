@@ -66,7 +66,7 @@ codeatlas read "#42"
 | `init` | Initialize index | `--workspace PATH` |
 | `overview` | Module dependency graph | `--view file\|logic`, `--filter PATH` |
 | `inspect` | Symbol details | `--level 1\|2`, `--detail method` |
-| `search` | Symbol search | `--exact`, `--kind`, `--path` |
+| `search` | Symbol search | `--exact`, `--regex`, `--kind`, `--path` |
 | `read` | Read source code | `--part declaration\|definition` |
 | `trace` | Connection tracing | `--direction forward\|backward\|both` |
 | `trust` | Set trust level | `high\|low` |
@@ -83,8 +83,13 @@ codeatlas read "#42"
 
 **search**
 ```
+codeatlas search Manager
 #42 [src/auth/handler.py:42-67] authenticate(credentials: Credentials) -> Result  [low]
 #58 [src/auth/session.py:28] SessionManager.authenticate  [low]
+
+codeatlas search "^get.*Data$" --regex
+#12 [src/api/fetch.py:15-28] getData  [low]
+#89 [src/db/query.py:42-56] getUserData  [low]
 ```
 
 **trace**
@@ -102,7 +107,8 @@ Backward (called by):
 | Language | Extensions | Features |
 |----------|------------|----------|
 | Python | .py, .pyi | Full support |
-| C/C++ | .c, .cc, .cpp, .h, .hpp | Declaration/definition merging, namespace support |
+| C/C++ | .c, .cpp, .h, .hpp | Declaration/definition merging, namespace support |
+| CUDA | .cu, .cuh | C++ parser with CUDA extensions |
 
 ### Tips for C++ Projects
 
@@ -127,7 +133,13 @@ exclude:
   - build/
   - __pycache__/
   - "*.generated.py"
+extensions:        # Optional: override default extensions
+  - .py
+  - .cpp
+  - .h
 ```
+
+Default extensions: `.py`, `.pyi`, `.c`, `.h`, `.cpp`, `.hpp`, `.cu`, `.cuh`
 
 ## Design Compatibility
 

@@ -43,12 +43,83 @@ Design for CodeAtlas Compatibility:
   Summary: Make everything explicit.
 """
 
+FULL_HELP = """codeatlas - LLM-oriented code atlas for understanding code structure
+
+Commands:
+
+  init [OPTIONS]
+    Initialize CodeAtlas index for the workspace.
+    --workspace, -w PATH    Workspace directory to index
+    --config, -c PATH       Path to config file
+
+  rebuild [PATH] [OPTIONS]
+    Rebuild index for specified path or entire workspace.
+    PATH                    Specific file or directory to rebuild
+    --workspace, -w PATH    Workspace directory
+
+  overview [OPTIONS]
+    Show Level 0 module dependency graph.
+    --filter, -f TEXT       Filter to subdirectory or namespace
+    --view, -v TEXT         View type: file or logic [default: file]
+    --workspace, -w PATH    Workspace directory
+
+  search QUERY [OPTIONS]
+    Search for symbols matching the query.
+    --exact, -e             Exact match instead of substring
+    --regex, -r             Use regex pattern matching
+    --kind, -k TEXT         Filter by symbol kind
+    --path, -p TEXT         Filter by file path
+    --workspace, -w PATH    Workspace directory
+
+  inspect TARGET [OPTIONS]
+    Inspect a module, namespace, or class.
+    --level, -l INT         Expansion level (1 or 2) [default: 1]
+    --max-items, -m INT     Maximum symbols to return [default: 50]
+    --force-expand          Override high trust folding
+    --detail, -d TEXT       Detail level: class or method [default: class]
+    --workspace, -w PATH    Workspace directory
+
+  read SYMBOL [OPTIONS]
+    Read source code for a symbol.
+    --part, -p TEXT         Part to read: declaration or definition [default: definition]
+    --workspace, -w PATH    Workspace directory
+
+  trace TARGET [OPTIONS]
+    Trace connections for a symbol.
+    --direction, -d TEXT    Direction: forward, backward, or both [default: both]
+    --workspace, -w PATH    Workspace directory
+
+  trust TARGET LEVEL [OPTIONS]
+    Set trust level for a symbol or path.
+    LEVEL                   Trust level: high or low
+    --workspace, -w PATH    Workspace directory
+"""
+
+
+def _help_callback(ctx: typer.Context, value: bool) -> None:
+    if value:
+        typer.echo(FULL_HELP)
+        typer.echo(DESIGN_GUIDE)
+        raise typer.Exit()
+
+
 app = typer.Typer(
     name="codeatlas",
     help="LLM-oriented code atlas for understanding code structure.",
-    epilog=DESIGN_GUIDE,
-    no_args_is_help=True,
+    add_completion=False,
+    invoke_without_command=True,
 )
+
+
+@app.callback(invoke_without_command=True)
+def _main_callback(
+    ctx: typer.Context,
+    help_: bool = typer.Option(False, "--help", "-h", callback=_help_callback, is_eager=True),
+) -> None:
+    if ctx.invoked_subcommand is None and not help_:
+        typer.echo(FULL_HELP)
+        typer.echo(DESIGN_GUIDE)
+        raise typer.Exit()
 
 DB_NAME = ".codeatlas.db"
 
@@ -255,6 +326,12 @@ def search(
         "-e",
         help="Exact match instead of substring",
     ),
+    regex: bool = typer.Option(
+        False,
+        "--regex",
+        "-r",
+        help="Use regex pattern matching",
+    ),
     kind: Optional[str] = typer.Option(
         None,
         "--kind",
@@ -275,6 +352,10 @@ def search(
     ),
 ) -> None:
     """Search for symbols matching the query."""
+    if exact and regex:
+        typer.echo("Error: --exact and --regex are mutually exclusive")
+        raise typer.Exit(1)
+
     workspace_path = workspace or Path.cwd()
     workspace_path = workspace_path.resolve()
 
@@ -286,7 +367,7 @@ def search(
     db = Database(db_path)
     db.connect()
 
-    results = search_symbols(db, query, exact=exact, kind=kind, path=path)
+    results = search_symbols(db, query, exact=exact, regex=regex, kind=kind, path=path)
 
     db.close()
 

@@ -155,6 +155,9 @@ class Indexer:
         """
         files: list[Path] = []
 
+        # Only index extensions that are both in config.extensions and have a parser
+        allowed_extensions = self.config.extensions & set(self.parsers.keys())
+
         if target_path is not None:
             # Resolve to absolute path
             if not target_path.is_absolute():
@@ -163,18 +166,18 @@ class Indexer:
 
             if target_path.is_file():
                 # Single file
-                if target_path.suffix in self.parsers:
+                if target_path.suffix in allowed_extensions:
                     if not self.config.should_exclude(target_path):
                         files.append(target_path)
             elif target_path.is_dir():
                 # Directory - discover all matching files
-                for ext in self.parsers:
+                for ext in allowed_extensions:
                     for file_path in target_path.rglob(f"*{ext}"):
                         if not self.config.should_exclude(file_path):
                             files.append(file_path)
         else:
             # Full workspace discovery
-            for ext in self.parsers:
+            for ext in allowed_extensions:
                 for file_path in self.config.workspace.rglob(f"*{ext}"):
                     if not self.config.should_exclude(file_path):
                         files.append(file_path)
